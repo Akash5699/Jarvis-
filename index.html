@@ -135,13 +135,22 @@
       font-size: 1rem;
       padding: 14px;
     }
+    .btn-reset {
+      font-size: 0.75rem;
+      padding: 6px 12px;
+      border: none;
+      color: #64748b;
+      background: transparent;
+      cursor: pointer;
+      align-self: center;
+    }
   </style>
 </head>
 <body>
 
   <header>
     <h1>J.A.R.V.I.S.</h1>
-    <div class="status" id="status">SECURITY CHECK REQUIRED</div>
+    <div class="status" id="status">INITIALIZING SECURITY PROTOCOL...</div>
   </header>
 
   <div class="reactor-container">
@@ -151,7 +160,7 @@
   </div>
 
   <div class="terminal">
-    <div class="user-text" id="userOutput">Type below or tap Voice Link.</div>
+    <div class="user-text" id="userOutput">Tap core or Voice Link to initiate voice protocol.</div>
     <div class="jarvis-text" id="jarvisOutput">Standing by, Sir.</div>
   </div>
 
@@ -161,13 +170,12 @@
       <input type="text" id="textInput" placeholder="Enter command manually..." onkeydown="if(event.key==='Enter') sendManualCommand()">
       <button onclick="sendManualCommand()">SEND</button>
     </div>
+    <button class="btn-reset" onclick="resetKey()">Reset Stored API Key</button>
   </div>
 
   <script>
-    // ================= CONFIGURATION =================
-    const GEMINI_API_KEY = "AQ.Ab8RN6LAKH-gvU7koyUXEP2Di72mJLsfPP5gFSKCeqYbzSNoOQ";
     const SECRET_PIN = "0000"; 
-    // =================================================
+    let apiKey = localStorage.getItem("jarvis_gemini_key") || "";
 
     const statusEl = document.getElementById("status");
     const reactor = document.getElementById("reactor");
@@ -178,18 +186,39 @@
     let isAuthorized = false;
     let isListening = false;
 
-    function verifyIdentity() {
-      const entered = prompt("IDENTITY VERIFICATION REQUIRED.\nEnter Access PIN:");
-      if (entered === SECRET_PIN) {
-        isAuthorized = true;
-        statusEl.innerText = "ONLINE - SYSTEM SECURED";
-        speakResponse("Welcome back, Sir. All systems operational.");
-      } else {
+    function verifySetup() {
+      const enteredPin = prompt("IDENTITY VERIFICATION REQUIRED.\nEnter Access PIN:");
+      if (enteredPin !== SECRET_PIN) {
         alert("Access Denied. Unauthorized entity detected.");
         statusEl.innerText = "ACCESS LOCKED";
+        return;
+      }
+      isAuthorized = true;
+
+      if (!apiKey) {
+        const inputKey = prompt("SETUP REQUIRED:\nPlease paste your Gemini API Key below.\n(This is saved only inside your device browser):");
+        if (inputKey && inputKey.trim().length > 0) {
+          apiKey = inputKey.trim();
+          localStorage.setItem("jarvis_gemini_key", apiKey);
+          statusEl.innerText = "ONLINE - SYSTEM SECURED";
+          speakResponse("API Key configured. Systems fully operational, Sir.");
+        } else {
+          statusEl.innerText = "API KEY MISSING";
+          alert("API Key is required to run JARVIS.");
+        }
+      } else {
+        statusEl.innerText = "ONLINE - SYSTEM SECURED";
+        speakResponse("Welcome back, Sir. All systems operational.");
       }
     }
-    window.onload = verifyIdentity;
+    window.onload = verifySetup;
+
+    function resetKey() {
+      localStorage.removeItem("jarvis_gemini_key");
+      apiKey = "";
+      alert("Stored key removed. Reloading...");
+      location.reload();
+    }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
@@ -219,16 +248,16 @@
       };
 
       recognition.onerror = (event) => {
-        statusEl.innerText = `Error: ${event.error}`;
+        statusEl.innerText = `Voice Error: ${event.error}`;
         reactor.classList.remove("active");
       };
     } else {
-      statusEl.innerText = "Speech Recognition not supported in this view. Open in Chrome.";
+      statusEl.innerText = "Speech Recognition not supported. Use Google Chrome.";
     }
 
     function toggleListening() {
       if (!isAuthorized) {
-        verifyIdentity();
+        verifySetup();
         return;
       }
       if (!recognition) return;
@@ -242,7 +271,7 @@
 
     function sendManualCommand() {
       if (!isAuthorized) {
-        verifyIdentity();
+        verifySetup();
         return;
       }
       const input = document.getElementById("textInput");
@@ -254,17 +283,21 @@
     }
 
     async function processCommand(promptText) {
+      if (!apiKey) {
+        alert("API Key missing. Click 'Reset Stored API Key' to re-enter.");
+        return;
+      }
+
       statusEl.innerText = "THINKING...";
       jarvisOutput.innerText = "Processing command...";
 
-      const systemInstruction = "You are J.A.R.V.I.S., an advanced AI assistant. Address the user as 'Sir'. Keep responses concise, highly intelligent, direct, and slightly witty when appropriate. You understand both Hindi and English.";
+      const systemInstruction = "You are J.A.R.V.I.S., Tony Stark's AI assistant. Address the user as 'Sir'. Keep responses concise, direct, intelligent, and slightly witty. You understand both Hindi and English.";
 
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": GEMINI_API_KEY
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: `${systemInstruction}\n\nCommand:${promptText}` }] }]
